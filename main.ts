@@ -1,10 +1,10 @@
-// Vice Rush — a working gta6-01 entry (Node 22, standard library only): the game is this
-// directory's game/ folder, plain static files a desktop browser loads offline
-// (game/index.html and its ES modules, no library and no network request), and the program
-// hands it in. It copies game/ and screenshots/ from beside this file to /output and writes
-// /output/dossier.json, the summary the judge reads, with the vendored make.fun library.
-// Vice Rush is a 2D top-down open-world crime game: explore Vice City on foot and by car,
-// steal cars, outrun the VCPD, run three story missions, and watch the wanted stars climb.
+// Vice Rush 3D — a GTA-style open-world crime game for the gta6-01 bounty, built on three.js.
+// The playable city lives in game/: a procedural sun-drenched Vice City you roam on foot or
+// behind the wheel, jacking cars, dodging patrol cars and a police helicopter as a 1–5 star
+// wanted rating climbs, and working through six story jobs for Rico and Marisol.
+// On screen: a HUD with minimap, radio station, cash and health, plus save slots that keep
+// your progress. This file is the submission entrypoint: it stages game/ and screenshots/
+// into the output folder and writes dossier.json for the judge.
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
