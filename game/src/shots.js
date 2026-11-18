@@ -1,127 +1,136 @@
-// The screenshot scenes behind ?shot=chase|drive|foot|mission. Each one stages a
-// real game state — a fresh world, a placed player, traffic and police — then plays
-// it forward for a fixed number of steps with a simple autopilot driving the real
-// simulation, so the frame is what real play looks like and the same scene always
-// gives the same frame.
-import { makeCar, makePed, stepEntities, addCrime } from './entities.js';
-import { startMission } from './missions.js';
-import { SCREEN_PLAY } from './render.js';
+// Vice Rush 3D — deterministic screenshot staging. ?shot=chase|drive|foot|
+// mission arranges the scene (player, cars, cops, helicopter, mission,
+// dialogue) so the four screenshots each show a different slice of the game.
+// The recorder sees real renders of the game, never composites.
+import { PLACES, BLOCK, HALF, BEACH_X } from './config.js';
+import { Car } from './vehicles.js';
 
-const STEPS = 150; // 2.5 s of play at 60 steps a second
-const DT = 1 / 60;
+// Dialogue + toast shown for each shot. refreshShotHud re-shows them right
+// before the screenshot, because the auto-hide timers run on real time while
+// a software-rendered frame can take seconds.
+const SHOT_HUD = {
+  chase: {
+    speaker: 'Rico',
+    text: 'The chopper is up and the whole VCPD is on you, Vic. Lose them and get to the hideout — don\u2019t stop for anything.',
+    toast: 'WANTED — 4 STARS',
+  },
+  drive: {
+    speaker: 'Rico',
+    text: 'Nice wheels, Vic. Now bring it to the Ocean Drive drop-off — and try not to scratch it.',
+    toast: 'HOT WHEELS — DELIVER THE CAR',
+  },
+  foot: {
+    speaker: 'Rico',
+    text: 'The Red Vipers own the beachfront, Vic. Clear them out — the whole city is watching.',
+    toast: 'KING OF VICE CITY — CLEAR THE CREW',
+  },
+  mission: {
+    speaker: 'Rico',
+    text: 'Three packages, three corners of the city. Grab them all, bring the bag back to me.',
+    toast: 'PACKAGE RUN — 3 PACKAGES',
+  },
+};
 
-function driveInput(state, tx, ty) {
-  // Steer the player's car toward a target point, throttle down.
-  const car = state.player.inCar;
-  if (!car) return { up: false, down: false, left: false, right: false, run: false, shoot: false, enter: false, mouseActive: false, aimX: 0, aimY: 0 };
-  const want = Math.atan2(ty - car.y, tx - car.x);
-  let diff = want - car.angle;
-  while (diff > Math.PI) diff -= Math.PI * 2;
-  while (diff < -Math.PI) diff += Math.PI * 2;
-  return {
-    up: true, down: false,
-    left: diff < -0.08, right: diff > 0.08,
-    run: false, shoot: false, enter: false, mouseActive: false, aimX: 0, aimY: 0,
-  };
+export function refreshShotHud(game, name) {
+  const h = SHOT_HUD[name];
+  if (!h) return;
+  game.hud.showDialogue(h.speaker, h.text);
+  game.hud.showToast(h.toast);
 }
 
-function playForward(game, steps, tx, ty) {
-  const events = {};
-  for (let i = 0; i < steps; i++) {
-    const input = driveInput(game.state, tx, ty);
-    stepEntities(game.state, game.city, input, DT, events);
-  }
-}
+export function stageShot(game, name) {
+  const p = game.player;
+  const hud = game.hud;
 
-export function stageShot(shot, game) {
-  const { state, city, missions } = game;
-  const p = state.player;
-  state.wanted = 0;
-  state.cops.length = 0;
-  state.bullets.length = 0;
-  state.message = '';
-  state.messageTimer = 0;
-
-  if (shot === 'chase') {
-    // Player in a stolen car, three police cruisers on his tail, wanted 3 stars,
-    // mission 1 active with the drop-off marked. Straight east along road y=900.
-    const car = makeCar(1500, 900, 0, '#c0392b');
+  if (name === 'chase') {
+    // COVER: sunset police chase — player in a sports car, 4 stars, helicopter
+    // overhead, cruisers closing in, mission panel + dialogue on screen.
+    const car = new Car('sports', -HALF + 4 * BLOCK, -HALF + 2 * BLOCK, Math.PI * 0.5);
     car.driver = 'player';
-    car.speed = 320;
-    state.cars.push(car);
-    p.inCar = car;
-    p.x = car.x; p.y = car.y; p.angle = car.angle;
-    addCrime(state, 3);
-    for (let i = 0; i < 3; i++) {
-      const pc = makeCar(1500 - 95 - i * 70, 900 + (i % 2 === 0 ? -24 : 24), 0, '#1c2733', true);
-      pc.driver = 'police';
-      pc.speed = 380;
-      state.cars.push(pc);
+    game.scene.add(car.group);
+    p.car = car;
+    p.x = car.x; p.z = car.z;
+    game.playerMesh.visible = false;
+    car.speed = 26;
+    game.missions.index = 2;
+    game.missions.start(); // Lose the Heat — objective panel visible
+    game.addWanted(4, true);
+    game.camYaw = car.heading;
+    // Cruisers ahead and alongside, in the camera's view (car faces -x).
+    for (const [dx, dz] of [[-26, 5], [-18, -7], [-34, -2]]) {
+      const cop = new Car('police', car.x + dx, car.z + dz, car.heading);
+      cop.driver = 'police';
+      cop.speed = 22;
+      game.scene.add(cop.group);
+      game.police.cruisers.push(cop);
     }
-    missions.index = 0;
-    startMission(missions, state, city);
-    missions.banner = '';
-    missions.bannerTimer = 0;
-    state.message = 'The VCPD is on your tail — reach the drop-off!';
-    state.messageTimer = 10;
-    playForward(game, STEPS, 3400, 900);
-  } else if (shot === 'drive') {
-    // Cruising through downtown traffic in a stolen sedan, no heat.
-    // Straight east along road y=600, in the eastbound lane (y=624);
-    // oncoming traffic keeps to the westbound lane (y=576).
-    const car = makeCar(600, 624, 0, '#2980b9');
+    // Helicopter: lock it above the road ahead, in frame, for the cover shot.
+    game.police.heliLock = { dx: -48, dz: 0 };
+    // Level the chase camera so the heli and the sunset sky are in frame.
+    game.shotCam = { dist: 11, height: 3.0, lookY: 4.5 };
+    refreshShotHud(game, name);
+  } else if (name === 'drive') {
+    // Driving downtown in traffic.
+    const car = new Car('sedan', -HALF + 2 * BLOCK, -HALF + 3 * BLOCK, Math.PI);
     car.driver = 'player';
-    car.speed = 300;
-    state.cars.push(car);
-    p.inCar = car;
-    p.x = car.x; p.y = car.y; p.angle = car.angle;
-    missions.index = 0;
-    missions.stage = 'intro';
-    // Extra traffic on the same street so the drive reads as a busy city road.
-    for (const [tx, ty, ta] of [[1000, 576, Math.PI], [1700, 576, Math.PI], [2400, 576, Math.PI], [2600, 624, 0]]) {
-      const t = makeCar(tx, ty, ta, ['#e67e22', '#f1c40f', '#8e44ad', '#1abc9c'][Math.floor(Math.random() * 4)]);
-      t.driver = 'traffic';
-      t.targetSpeed = 130;
-      state.cars.push(t);
+    game.scene.add(car.group);
+    p.car = car;
+    p.x = car.x; p.z = car.z;
+    game.playerMesh.visible = false;
+    car.speed = 18;
+    game.missions.index = 0;
+    game.missions.start(); // Hot Wheels — deliver the car
+    game.missions.active.stage = 1;
+    game.hud.setMission('Hot Wheels', 'Steal any car, then drive it to the Ocean Drive drop-off.', 1, 2);
+    game.missions.updateMarker();
+    game.camYaw = car.heading;
+    // Traffic ahead on the same road (car faces +z here: heading PI).
+    for (const [type, dz, lane] of [['taxi', 26, -3], ['sedan', 44, 3], ['coupe', 62, -3]]) {
+      const t = new Car(type, car.x + lane, car.z + dz, car.heading);
+      t.driver = 'traffic'; t.cruise = 10; t.speed = 10;
+      game.scene.add(t.group);
+      game.traffic.cars.push(t);
     }
-    playForward(game, STEPS, 3400, 624);
-  } else if (shot === 'foot') {
-    // On foot in Sunset Park, pedestrians strolling, traffic passing on the roads.
-    p.x = 1650;
-    p.y = 1650;
-    p.angle = Math.PI / 4;
-    p.inCar = null;
-    for (let i = 0; i < 6; i++) {
-      state.peds.push(makePed(1500 + i * 55, 1550 + (i % 3) * 60, Math.random));
-    }
-    missions.index = 0;
-    missions.stage = 'intro';
-  } else if (shot === 'mission') {
-    // Mission 2 in progress: two packages already collected, the third marked
-    // ahead on the road, player driving west toward it with a little heat.
-    missions.index = 1;
-    startMission(missions, state, city);
-    missions.packages[0].taken = true;
-    missions.packages[1].taken = true;
-    missions.collected = 2;
-    missions.banner = '';
-    missions.bannerTimer = 0;
-    const car = makeCar(2100, 2400, Math.PI, '#27ae60');
-    car.driver = 'player';
-    car.speed = 340;
-    state.cars.push(car);
-    p.inCar = car;
-    p.x = car.x; p.y = car.y; p.angle = car.angle;
-    addCrime(state, 1);
-    const pc = makeCar(2100 + 150, 2400 + 24, Math.PI, '#1c2733', true);
-    pc.driver = 'police';
-    pc.speed = 320;
-    state.cars.push(pc);
-    state.message = 'Package 2/3 — one more, then deliver the bag.';
-    state.messageTimer = 10;
-    playForward(game, STEPS, 500, 2400);
+    refreshShotHud(game, name);
+  } else if (name === 'foot') {
+    // On foot on Ocean Drive, facing the sunset city with peds and rivals.
+    p.x = -HALF + 7 * BLOCK; p.z = -HALF + 2 * BLOCK; // on the road (x = 216)
+    p.heading = Math.PI / 2; // face west, toward the sunset
+    game.camYaw = Math.PI / 2; // camera behind, east of the player
+    game.playerMesh.visible = true;
+    game._placePlayerMesh();
+    game.peds.spawn(p.x, p.z, 6);
+    // Pull three pedestrians onto the sidewalk beside the player.
+    const near = game.peds.peds.slice(-3);
+    const spots = [[-6, 9], [5, -10], [-11, -8]];
+    near.forEach((pd, i) => {
+      pd.x = p.x + spots[i][0]; pd.z = p.z + spots[i][1];
+      pd.mesh.group.position.set(pd.x, 0, pd.z);
+    });
+    // Two rival crew members ahead, on the road, with health bars.
+    game.combat.spawnEnemy(p.x - 14, p.z + 4, 100);
+    game.combat.spawnEnemy(p.x - 20, p.z - 6, 100);
+    game.missions.index = 5;
+    game.missions.start(); // King of Vice City — final showdown framing
+    refreshShotHud(game, name);
+  } else if (name === 'mission') {
+    // A mission in progress: Package Run, first package just ahead.
+    p.x = -HALF + BLOCK; p.z = -HALF + BLOCK + 16; // on the road, south of package 1
+    p.heading = 0; // face north, toward the package
+    game.camYaw = 0; // camera behind, south of the player
+    game.playerMesh.visible = true;
+    game._placePlayerMesh();
+    game.missions.index = 1;
+    game.missions.start(); // Package Run
+    const car = new Car('coupe', p.x + 5, p.z + 8, 0.4);
+    car.driver = null;
+    game.scene.add(car.group);
+    game.parkedCars.push(car);
+    game.peds.spawn(p.x, p.z, 4);
+    refreshShotHud(game, name);
   } else {
-    return SCREEN_PLAY;
+    // Unknown shot name: plain free-roam start.
+    hud.showToast('Vice Rush 3D — free roam');
   }
-  return SCREEN_PLAY;
+  game._syncHud();
 }

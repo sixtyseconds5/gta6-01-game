@@ -1,83 +1,62 @@
-// Keyboard and pointer input. Held keys give movement and steering; one-shot
-// presses (confirm, pause, enter/exit car) are queued as flags and taken once by
-// the loop, so a press between two frames is never lost or counted twice.
-
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
-export const ACTION_ENTER = 4;
-
-const UP = new Set(['ArrowUp', 'KeyW']);
-const DOWN = new Set(['ArrowDown', 'KeyS']);
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const RUN = new Set(['ShiftLeft', 'ShiftRight']);
-const CONFIRM = new Set(['Enter', 'Space']);
-const PAUSE = new Set(['KeyP', 'Escape']);
-const ENTER = new Set(['KeyE']);
-const MUTE = new Set(['KeyM']);
-
-export function createInput(canvas) {
-  const keys = new Set();
-  let actions = 0;
-  let shoot = false;
-  let mouseX = 0;
-  let mouseY = 0;
-  let mouseActive = false;
-  let mutePressed = false;
-
-  window.addEventListener('keydown', (event) => {
-    if (CONFIRM.has(event.code)) { actions |= ACTION_CONFIRM; event.preventDefault(); }
-    if (PAUSE.has(event.code)) actions |= ACTION_PAUSE;
-    if (ENTER.has(event.code)) actions |= ACTION_ENTER;
-    if (MUTE.has(event.code)) mutePressed = true;
-    keys.add(event.code);
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) {
-      event.preventDefault();
-    }
-  });
-  window.addEventListener('keyup', (event) => keys.delete(event.code));
-  window.addEventListener('blur', () => keys.clear());
-
-  canvas.addEventListener('mousemove', (event) => {
-    const rect = canvas.getBoundingClientRect();
-    mouseX = event.clientX - rect.left;
-    mouseY = event.clientY - rect.top;
-    mouseActive = true;
-  });
-  canvas.addEventListener('mousedown', (event) => {
-    if (event.button === 0) shoot = true;
-    const rect = canvas.getBoundingClientRect();
-    mouseX = event.clientX - rect.left;
-    mouseY = event.clientY - rect.top;
-    mouseActive = true;
-  });
-  window.addEventListener('mouseup', (event) => {
-    if (event.button === 0) shoot = false;
-  });
-  canvas.addEventListener('contextmenu', (event) => event.preventDefault());
-
-  return {
-    get up() { return [...keys].some((k) => UP.has(k)); },
-    get down() { return [...keys].some((k) => DOWN.has(k)); },
-    get left() { return [...keys].some((k) => LEFT.has(k)); },
-    get right() { return [...keys].some((k) => RIGHT.has(k)); },
-    get run() { return [...keys].some((k) => RUN.has(k)); },
-    get shoot() { return shoot; },
-    get mouseActive() { return mouseActive; },
-    get mouseX() { return mouseX; },
-    get mouseY() { return mouseY; },
-    get confirm() { return (actions & ACTION_CONFIRM) !== 0; },
-    get pause() { return (actions & ACTION_PAUSE) !== 0; },
-    get enter() { return (actions & ACTION_ENTER) !== 0; },
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
-    },
-    takeMute() {
-      const m = mutePressed;
-      mutePressed = false;
-      return m;
-    },
-  };
+// Vice Rush 3D — keyboard + mouse input state. Pointer lock on click for
+// mouse-look; WASD movement, E interact, Space jump, 1/2/3 weapons, M mute,
+// R/Q radio, P/Esc pause.
+export class Input {
+  constructor(canvas) {
+    this.keys = new Set();
+    this.mouseDX = 0; this.mouseDY = 0;
+    this.mouseDown = false; this.mouseHeld = false;
+    this.locked = false;
+    this.canvas = canvas;
+    this._onKeyDown = (e) => {
+      if (e.repeat) return;
+      this.keys.add(e.code);
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      if (this.onKey) this.onKey(e.code);
+    };
+    this._onKeyUp = (e) => this.keys.delete(e.code);
+    this._onMouseMove = (e) => {
+      if (this.locked) { this.mouseDX += e.movementX; this.mouseDY += e.movementY; }
+    };
+    this._onMouseDown = (e) => {
+      if (e.target !== this.canvas) return; // HUD button clicks are not shots
+      if (e.button === 0) { this.mouseDown = true; this.mouseHeld = true; }
+    };
+    this._onMouseUp = (e) => { if (e.button === 0) this.mouseHeld = false; };
+    this._onLockChange = () => { this.locked = document.pointerLockElement === canvas; };
+    this._onClick = () => {
+      if (!this.locked && this.wantLock) {
+        try { canvas.requestPointerLock(); } catch { /* pointer lock unavailable */ }
+      }
+    };
+    window.addEventListener('keydown', this._onKeyDown);
+    window.addEventListener('keyup', this._onKeyUp);
+    window.addEventListener('mousemove', this._onMouseMove);
+    window.addEventListener('mousedown', this._onMouseDown);
+    window.addEventListener('mouseup', this._onMouseUp);
+    document.addEventListener('pointerlockchange', this._onLockChange);
+    canvas.addEventListener('click', this._onClick);
+    this.wantLock = true;
+    this.onKey = null;
+  }
+  down(code) { return this.keys.has(code); }
+  axis() {
+    let x = 0, z = 0;
+    if (this.down('KeyW') || this.down('ArrowUp')) z -= 1;
+    if (this.down('KeyS') || this.down('ArrowDown')) z += 1;
+    if (this.down('KeyA') || this.down('ArrowLeft')) x -= 1;
+    if (this.down('KeyD') || this.down('ArrowRight')) x += 1;
+    return { x, z };
+  }
+  consumeMouse() { const dx = this.mouseDX, dy = this.mouseDY; this.mouseDX = 0; this.mouseDY = 0; return { dx, dy }; }
+  consumeClick() { const c = this.mouseDown; this.mouseDown = false; return c; }
+  dispose() {
+    window.removeEventListener('keydown', this._onKeyDown);
+    window.removeEventListener('keyup', this._onKeyUp);
+    window.removeEventListener('mousemove', this._onMouseMove);
+    window.removeEventListener('mousedown', this._onMouseDown);
+    window.removeEventListener('mouseup', this._onMouseUp);
+    document.removeEventListener('pointerlockchange', this._onLockChange);
+    this.canvas.removeEventListener('click', this._onClick);
+  }
 }
