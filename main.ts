@@ -1,10 +1,10 @@
-// Vice Rush 3D — a GTA-style open-world crime game for the gta6-01 bounty, built on three.js.
-// The playable city lives in game/: a procedural sun-drenched Vice City you roam on foot or
-// behind the wheel, jacking cars, dodging patrol cars and a police helicopter as a 1–5 star
-// wanted rating climbs, and working through six story jobs for Rico and Marisol.
-// On screen: a HUD with minimap, radio station, cash and health, plus save slots that keep
-// your progress. This file is the submission entrypoint: it stages game/ and screenshots/
-// into the output folder and writes dossier.json for the judge.
+// Vice Rush 3D — an open-world GTA-style crime game for make.fun's gta6-01 bounty, rendered with three.js.
+// game/ holds the whole playable Vice City: a procedural sun-soaked city you explore on foot or
+// in a stolen car, shaking off patrol cars and a police chopper while your wanted level rises
+// from one to five stars, and taking on six story jobs from Rico and Marisol.
+// The HUD shows a minimap, the radio station, cash and health, and save slots carry your
+// progress between sessions. This file is the entrypoint: it copies game/ and screenshots/
+// into the output directory and writes dossier.json, the summary the judge reads.
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
