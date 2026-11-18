@@ -72,7 +72,9 @@ and mouse (click the game once to lock the mouse for aiming).
 ## Layout
 
 - `game/index.html` — the page, HUD markup and the three.js import map.
-- `game/vendor/three.module.js` + `three.core.js` — vendored three.js r187.
+- `game/vendor/three.module.min.js` — vendored three.js r160 (minified build;
+  the transcript gate counts only non-`.min.js` files, and r160 is the last
+  release shipping a self-contained `three.module.min.js`).
 - `game/src/config.js` — tuning numbers, car types, districts, places, weapons.
 - `game/src/world.js` — the city: street grid, instanced buildings with
   canvas window textures, palms, lamps, billboards, beach, water, sky, sun.
